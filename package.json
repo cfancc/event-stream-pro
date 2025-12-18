@@ -1,0 +1,18 @@
+{
+    "name": "event-stream-pro",
+    "version": "1.0.0",
+    "description": "Premium Chrome DevTools extension for real-time SSE and Streaming Fetch debugging with automatic Unicode decoding.",
+    "private": false,
+    "author": "EventStream Pro Team",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/user/event-stream-pro"
+    },
+    "scripts": {
+        "build": "node scripts/build.js"
+    },
+    "devDependencies": {
+        "fs-extra": "^11.1.0"
+    }
+}

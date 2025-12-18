@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "EventStream Pro DevTools",
+  "version": "1.0.0",
+  "description": "DevTools extension for debugging EventSource and Streaming Fetch with automatic unicode decoding.",
+  "devtools_page": "devtools.html",
+  "permissions": [
+    "scripting",
+    "activeTab",
+    "storage",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "injected-script.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}
