@@ -35,19 +35,41 @@ const useMessageProcessor = () => {
     useEffect(() => {
         // eslint-disable-next-line no-undef
         const tabId = chrome.devtools?.inspectedWindow?.tabId;
-
+        
         let port = null;
-        try {
-            // eslint-disable-next-line no-undef
-            port = chrome.runtime.connect({ name: "panel" });
-            port.postMessage({ name: "init", tabId: tabId });
+        let isMounted = true;
+        let reconnectTimer = null;
 
-            port.onMessage.addListener((msg) => {
-                handleMessage(msg);
-            });
-        } catch (e) {
-            console.warn("Connection failed or not in extension environment", e);
-        }
+        const connect = () => {
+            if (!isMounted) return;
+            
+            try {
+                // eslint-disable-next-line no-undef
+                port = chrome.runtime.connect({ name: "panel" });
+                
+                // Notify background script about initialization
+                port.postMessage({ name: "init", tabId: tabId });
+
+                // Listen for messages
+                port.onMessage.addListener(handleMessage);
+
+                // Handle disconnect (e.g. Service Worker goes inactive)
+                port.onDisconnect.addListener(() => {
+                    port = null;
+                    if (isMounted) {
+                        // Attempt reconnect after a short delay
+                        reconnectTimer = setTimeout(connect, 2000);
+                    }
+                });
+            } catch (e) {
+                console.warn("Connection failed", e);
+                if (isMounted) {
+                    reconnectTimer = setTimeout(connect, 2000);
+                }
+            }
+        };
+
+        connect();
 
         const handleNavigated = () => {
             setRequests([]);
@@ -63,7 +85,15 @@ const useMessageProcessor = () => {
         } catch (e) { }
 
         return () => {
-            if (port) port.disconnect();
+            isMounted = false;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            
+            if (port) {
+                try {
+                    port.disconnect();
+                } catch (e) { /* ignore */ }
+            }
+            
             try {
                 // eslint-disable-next-line no-undef
                 if (chrome.devtools?.network?.onNavigated) {
