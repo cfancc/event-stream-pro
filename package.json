@@ -9,6 +9,9 @@
         "type": "git",
         "url": "https://github.com/user/event-stream-pro"
     },
+    "engines": {
+        "node": ">=18.18.0"
+    },
     "scripts": {
         "build": "node scripts/build.js"
     },

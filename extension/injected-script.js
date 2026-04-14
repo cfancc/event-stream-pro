@@ -12,6 +12,12 @@
 (function () {
     if (window.__EVENT_STREAM_PRO_INSTALLED__) return;
     window.__EVENT_STREAM_PRO_INSTALLED__ = true;
+    const BRIDGE_INIT_SOURCE = "event-stream-proxy-init";
+    const EVENT_SOURCE = "event-stream-proxy";
+    let bridgeToken = "";
+    let bridgePort = null;
+    let windowBridgeFallback = false;
+    const pendingMessages = [];
 
     // --- Utils ---
 
@@ -31,11 +37,91 @@
      * @param {object} data - Payload
      */
     function sendToContentScript(type, data) {
-        window.postMessage({
-            source: "event-stream-proxy",
+        const payload = {
+            source: EVENT_SOURCE,
             type: type,
             data: data
-        }, "*");
+        };
+
+        if (tryDeliver(payload)) return;
+
+        pendingMessages.push(payload);
+        if (pendingMessages.length > 500) {
+            pendingMessages.shift();
+        }
+    }
+
+    function tryDeliver(payload) {
+        if (bridgePort) {
+            try {
+                bridgePort.postMessage(payload);
+                return true;
+            } catch (e) {
+                // Fall through to fallback.
+            }
+        }
+
+        if (windowBridgeFallback) {
+            window.postMessage({
+                ...payload,
+                token: bridgeToken
+            }, "*");
+            return true;
+        }
+
+        return false;
+    }
+
+    function flushPendingMessages() {
+        if (pendingMessages.length === 0) return;
+
+        while (pendingMessages.length > 0) {
+            const payload = pendingMessages.shift();
+            if (!tryDeliver(payload)) {
+                pendingMessages.unshift(payload);
+                break;
+            }
+        }
+    }
+
+    function emitSseEvent(id, part) {
+        const lines = part.split(/\r?\n/);
+        let eventType = "message";
+        const dataParts = [];
+
+        lines.forEach((rawLine) => {
+            const line = rawLine.trimEnd();
+            if (!line || line.startsWith(":")) return;
+
+            if (line.startsWith("event:")) {
+                eventType = line.slice(6).trim();
+                return;
+            }
+
+            if (line.startsWith("data:")) {
+                let value = line.slice(5);
+                if (value.startsWith(" ")) value = value.slice(1);
+                dataParts.push(value);
+            }
+        });
+
+        if (dataParts.length === 0 && eventType === "message") return;
+        sendToContentScript("es-message", {
+            id,
+            type: eventType,
+            data: dataParts.join("\n"),
+            time: Date.now()
+        });
+    }
+
+    function emitNdjsonChunk(id, line) {
+        const chunk = line.replace(/\r$/, "");
+        if (!chunk.trim()) return;
+        sendToContentScript("fetch-chunk", {
+            id,
+            chunk,
+            time: Date.now()
+        });
     }
 
     /**
@@ -51,6 +137,29 @@
             });
         } catch (e) { }
     }
+
+    function handleBridgeInit(event) {
+        if (event.source !== window) return;
+        if (!event.data || event.data.source !== BRIDGE_INIT_SOURCE) return;
+        if (!event.ports || event.ports.length === 0) return;
+        if (typeof event.data.token !== "string" || event.data.token.length === 0) return;
+
+        bridgeToken = event.data.token;
+
+        bridgePort = event.ports[0];
+        bridgePort.start();
+        sendToContentScript("bridge-ready", { id: "bridge", time: Date.now() });
+        flushPendingMessages();
+        window.removeEventListener("message", handleBridgeInit);
+    }
+
+    window.addEventListener("message", handleBridgeInit);
+    setTimeout(() => {
+        if (!bridgePort) {
+            windowBridgeFallback = true;
+            flushPendingMessages();
+        }
+    }, 1500);
 
     // --- Proxy: EventSource ---
 
@@ -183,9 +292,11 @@
         // DEBUG: Temporary log to debug missing captures
         // console.log("[EventStream Pro] Fetch Response:", url, "Content-Type:", contentType);
 
-        if (!contentType.toLowerCase().includes('event-stream') &&
-            !contentType.toLowerCase().includes('x-ndjson') &&
-            !contentType.toLowerCase().includes('stream+json')) {
+        const lowerContentType = contentType.toLowerCase();
+        const isSseStream = lowerContentType.includes("event-stream");
+        const isNdjsonStream = lowerContentType.includes("x-ndjson") || lowerContentType.includes("stream+json");
+
+        if (!isSseStream && !isNdjsonStream) {
             // console.log("[EventStream Pro] Filtered out:", url);
             return response;
         }
@@ -208,13 +319,22 @@
             const clone = response.clone();
             const reader = clone.body.getReader();
             const decoder = new TextDecoder("utf-8");
-            let buffer = '';
+            let buffer = "";
 
             (async () => {
                 try {
                     while (true) {
                         const { done, value } = await reader.read();
                         if (done) {
+                            // Flush remaining decoder state and trailing buffered data.
+                            buffer += decoder.decode();
+                            if (buffer.trim()) {
+                                if (isSseStream) {
+                                    emitSseEvent(id, buffer);
+                                } else {
+                                    emitNdjsonChunk(id, buffer);
+                                }
+                            }
                             sendToContentScript("fetch-done", { id: id, time: Date.now() });
                             break;
                         }
@@ -222,38 +342,22 @@
                         const chunk = decoder.decode(value, { stream: true });
                         buffer += chunk;
 
-                        // Basic SSE Parsing on the fly
-                        const parts = buffer.split(/\n\n/);
-                        buffer = parts.pop(); // Keep incomplete chunk
-
-                        parts.forEach(part => {
-                            const lines = part.split(/\n/);
-                            let eventType = 'message';
-                            let dataParts = [];
-
-                            lines.forEach(line => {
-                                line = line.trimEnd();
-                                if (line.startsWith('event:')) {
-                                    eventType = line.slice(6).trim();
-                                } else if (line.startsWith('data:')) {
-                                    let d = line.slice(5);
-                                    if (d.startsWith(' ')) d = d.slice(1);
-                                    dataParts.push(d);
-                                }
-                            });
-
-                            if (dataParts.length > 0 || eventType !== 'message') {
-                                sendToContentScript("es-message", {
-                                    id: id,
-                                    type: eventType,
-                                    data: dataParts.join('\n'),
-                                    time: Date.now()
-                                });
-                            }
-                        });
+                        if (isSseStream) {
+                            const parts = buffer.split(/\r?\n\r?\n/);
+                            buffer = parts.pop() || "";
+                            parts.forEach((part) => emitSseEvent(id, part));
+                        } else {
+                            const lines = buffer.split(/\r?\n/);
+                            buffer = lines.pop() || "";
+                            lines.forEach((line) => emitNdjsonChunk(id, line));
+                        }
                     }
                 } catch (err) {
-                    sendToContentScript("fetch-error", { id: id, error: err.toString() });
+                    sendToContentScript("fetch-error", {
+                        id: id,
+                        error: err instanceof Error ? err.message : String(err),
+                        time: Date.now()
+                    });
                 }
             })();
         } catch (e) {

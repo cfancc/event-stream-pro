@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import { Table, Tabs, Switch, Button, Input, Space, Tooltip, message, Checkbox } from 'antd';
+import { Table, Tabs, Switch, Button, Input, Tooltip, message, Checkbox } from 'antd';
 
-import { CopyOutlined, EyeOutlined, PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { CopyOutlined } from '@ant-design/icons';
 import { Resizable } from 'react-resizable';
 import { safeJsonParseAndDecode } from '../utils/decoder';
 import DetailsModal from './DetailsModal';
-
-const { TabPane } = Tabs;
 
 const ResizableTitle = (props) => {
     const { onResize, width, ...restProps } = props;

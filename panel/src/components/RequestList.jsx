@@ -1,19 +1,57 @@
-import React from 'react';
-import { List, Badge, Typography } from 'antd';
+import React, { useMemo, useState } from 'react';
+import { List, Badge, Typography, Segmented } from 'antd';
 
 const { Text } = Typography;
 
 const RequestList = ({ requests, selectedId, onSelect }) => {
+    const [sortOrder, setSortOrder] = useState('desc');
+
+    const sortedRequests = useMemo(() => {
+        const list = [...requests];
+        list.sort((a, b) => {
+            const aTime = Number(a.startTime) || 0;
+            const bTime = Number(b.startTime) || 0;
+            if (aTime === bTime) {
+                return String(a.id).localeCompare(String(b.id));
+            }
+            return sortOrder === 'asc' ? aTime - bTime : bTime - aTime;
+        });
+        return list;
+    }, [requests, sortOrder]);
+
     return (
         <div style={{
             height: '100%',
-            overflowY: 'auto',
             borderRight: '1px solid #E0E0E0',
-            backgroundColor: '#F5F5F5'
+            backgroundColor: '#F5F5F5',
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: 0
         }}>
+            <div style={{
+                padding: '8px 12px',
+                borderBottom: '1px solid #EAEAEA',
+                backgroundColor: '#F7F7F7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8
+            }}>
+                <Text type="secondary" style={{ fontSize: '12px' }}>时间排序</Text>
+                <Segmented
+                    size="small"
+                    value={sortOrder}
+                    onChange={setSortOrder}
+                    options={[
+                        { label: '正序', value: 'asc' },
+                        { label: '倒序', value: 'desc' }
+                    ]}
+                />
+            </div>
             <List
+                style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}
                 itemLayout="horizontal"
-                dataSource={requests}
+                dataSource={sortedRequests}
                 renderItem={(item) => {
                     const isSelected = item.id === selectedId;
                     let name = item.url;

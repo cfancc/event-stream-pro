@@ -2,7 +2,16 @@ const fs = require('fs-extra');
 const path = require('path');
 const { execSync } = require('child_process');
 
+function assertNodeVersion() {
+    const major = Number(process.versions.node.split('.')[0]);
+    if (Number.isNaN(major) || major < 18) {
+        throw new Error(`Node.js 18+ is required. Current: ${process.versions.node}`);
+    }
+}
+
 async function build() {
+    assertNodeVersion();
+
     const rootDir = path.resolve(__dirname, '..');
     const distDir = path.join(rootDir, 'dist');
     const extensionDir = path.join(rootDir, 'extension');
@@ -17,7 +26,10 @@ async function build() {
 
     // 2. Build Panel UI (React)
     console.log('Building React Panel...');
-    execSync('npm install', { cwd: panelDir, stdio: 'inherit' });
+    const panelNodeModules = path.join(panelDir, 'node_modules');
+    if (!fs.existsSync(panelNodeModules)) {
+        throw new Error('Panel dependencies not found. Run `npm install` in /panel first.');
+    }
     execSync('npm run build', { cwd: panelDir, stdio: 'inherit' });
 
     // 3. Copy Extension Core Files
@@ -32,4 +44,7 @@ async function build() {
     console.log('Build Complete! Load the "dist" folder in Chrome Extensions.');
 }
 
-build().catch(console.error);
+build().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});

@@ -37,15 +37,20 @@
    ```bash
    git clone https://github.com/cfancc/event-stream-pro.git
    ```
-2. 在根目录下**安装**依赖：
+2. 准备 **Node.js 18.18+** 环境（推荐 Node 20 LTS）。
+3. 在根目录下**安装**依赖：
    ```bash
    npm install
    ```
-3. **构建**插件：
+4. 在 `panel` 目录安装前端依赖：
+   ```bash
+   cd panel && npm install && cd ..
+   ```
+5. **构建**插件：
    ```bash
    npm run build
    ```
-4. **加载**到 Chrome 浏览器：
+6. **加载**到 Chrome 浏览器：
    - 打开 Chrome 浏览器，访问 `chrome://extensions`。
    - 开启右上角的 **开发者模式 (Developer mode)**。
    - 点击 **加载已解压的扩展程序 (Load unpacked)** 并选择项目下的 `/dist` 目录。
@@ -63,4 +68,3 @@
 ## 📄 开源协议
 
 本项目采用 **MIT License** 协议开源。详情请参阅 [LICENSE](LICENSE) 文件。
-

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Layout } from 'antd';
 import RequestList from './components/RequestList';
 import StreamViewer from './components/StreamViewer';
@@ -12,10 +12,45 @@ function App() {
   const { requests, messagesMap } = useMessageProcessor();
   const [width, setWidth] = useState(300);
   const [selectedId, setSelectedId] = useState(null);
+  const previousRequestIdsRef = useRef(new Set());
 
   const onResize = (event, { size }) => {
     setWidth(size.width);
   };
+
+  useEffect(() => {
+    if (requests.length === 0) {
+      previousRequestIdsRef.current = new Set();
+      if (selectedId !== null) {
+        setSelectedId(null);
+      }
+      return;
+    }
+
+    const previousIds = previousRequestIdsRef.current;
+    const currentIds = new Set(requests.map((item) => item.id));
+    const hasNewRequest = requests.some((item) => !previousIds.has(item.id));
+    const selectedMissing = selectedId ? !currentIds.has(selectedId) : false;
+
+    if (hasNewRequest || selectedMissing || !selectedId) {
+      const latestRequest = requests.reduce((latest, current) => {
+        if (!latest) return current;
+
+        const latestTime = Number(latest.startTime) || 0;
+        const currentTime = Number(current.startTime) || 0;
+        if (currentTime !== latestTime) {
+          return currentTime > latestTime ? current : latest;
+        }
+        return String(current.id) > String(latest.id) ? current : latest;
+      }, null);
+
+      if (latestRequest && latestRequest.id !== selectedId) {
+        setSelectedId(latestRequest.id);
+      }
+    }
+
+    previousRequestIdsRef.current = currentIds;
+  }, [requests, selectedId]);
 
   const selectedRequest = requests.find(r => r.id === selectedId);
   const selectedMessages = selectedId ? (messagesMap[selectedId] || []) : [];
